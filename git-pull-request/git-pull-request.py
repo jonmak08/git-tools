@@ -196,6 +196,9 @@ options = {
 	# The organization to update users from (set to None or an empty string to update from the current fork)
 	'user-organization': 'liferay',
 
+	# Sets the default comment to post when submitting a pull request.
+	'submit-default-comment' : None,
+
 	# Determines whether to open newly submitted pull requests on github
 	'submit-open-github': True,
 
@@ -238,16 +241,46 @@ def build_branch_name(pull_request):
 
 	return branch_name
 
+def build_pull_request_body(branch_name, reviewer_repo_name):
+	"""Returns the default body to use for a pull request for the branch with
+	the url and a comment"""
+	submit_default_comment = options['submit-default-comment']
+
+	comment = ''
+
+	reviewer = re.search("[^/]*", reviewer_repo_name)
+
+	reviewer = reviewer.group(0)
+
+	if reviewer is not None and reviewer != '':
+		comment += "Hey @%s,\n\n" % (reviewer)
+
+	jira_id = get_jira_id(branch_name)
+
+	comment += "Attached is an update for http://issues.liferay.com/browse/%s." % (jira_id)
+
+	if submit_default_comment is not None:
+		comment += "\n\n%s" % submit_default_comment
+
+	return comment
+
+
 def build_pull_request_title(branch_name):
 	"""Returns the default title to use for a pull request for the branch with
 	the name"""
 
-	jira_ticket = get_jira_ticket(branch_name)
+	title = get_jira_id(branch_name)
 
-	if jira_ticket:
-		branch_name = jira_ticket
+	url = "http://issues.liferay.com/rest/api/2/issue/%s" % (title)
 
-	return branch_name
+	data = github_json_request(url, None, False)
+
+	jira_title = data['fields']['summary']
+
+	if jira_title is not None and jira_title != '':
+		title = "%s - %s" % (title, jira_title)
+
+	return title
 
 def get_jira_ticket(text):
 	"""Returns a JIRA ticket id from the passed text, or a blank string otherwise"""
@@ -454,6 +487,8 @@ def command_close(repo_name, comment = None):
 	print color_text("Pull request closed", 'success')
 	print
 	display_status()
+
+	open_URL(pull_request.get('html_url'))
 
 def command_continue_update():
 	print color_text("Continuing update from %s" % options['update-branch'], 'status')
@@ -747,8 +782,8 @@ def command_submit(repo_name, username, reviewer_repo_name = None, pull_body = N
 	if pull_title == None or pull_title == '':
 		pull_title = build_pull_request_title(branch_name)
 
-	if pull_body == None:
-		pull_body = ''
+	if pull_body == None or pull_body == '':
+		pull_body = build_pull_request_body(branch_name, reviewer_repo_name)
 
 	params = {
 		'base': options['update-branch'],
@@ -793,6 +828,7 @@ def command_submit(repo_name, username, reviewer_repo_name = None, pull_body = N
 
 	if submitOpenGitHub:
 		open_URL(new_pr_url)
+		open_URL("http://issues.liferay.com/browse/%s" % (get_jira_id(branch_name)))
 
 def command_update(repo_name, target = None):
 	if target == None:
@@ -1088,6 +1124,16 @@ def get_default_repo_name():
 		raise UserWarning("Failed to determine github repository name")
 
 	return repo_name
+
+def get_jira_id(branch_name):
+	"""Returns the jira id of the pull request for the branch"""
+
+	m = re.search("([A-Z]{3,}-\d+)", branch_name)
+
+	if m is not None and m.group(1) != '':
+		return m.group(1)
+
+	return branch_name
 
 def get_git_base_path():
 	return os.popen('git rev-parse --show-toplevel').read().strip()
