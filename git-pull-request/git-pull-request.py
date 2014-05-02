@@ -457,6 +457,8 @@ def command_fetch(repo_name, pull_request_ID, auto_update = False):
 	print
 	display_status()
 
+	open_URL("http://issues.liferay.com/browse/%s" % (get_jira_id(branch_name)))
+
 def command_close(repo_name, comment = None):
 	"""Closes the current pull request on github with the optional comment, then
 	deletes the branch."""
